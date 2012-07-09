@@ -119,10 +119,9 @@ class VisitMarker
   draw: ( paper, center ) ->
     # draw it
     r = @getRadius() * opts.graphics.net_step
-    @element = paper.circle( center.x, center.y, r ).attr( { fill: "blue", stroke: "none" } )
-    _log( @host_log.host )
-    paper.print( center.x - 2 * r, center.y + r, @host_log.host, paper.getFont( "Times" ) )
-    true
+    @element = paper.set()
+    @element.push( paper.circle( center.x, center.y, r ).attr( { fill: "blue", stroke: "none" } ) )
+    @element.push( paper.print( center.x - 2 * r, center.y + r, @host_log.host, paper.getFont( "Times" ), 30 ) )
 
 
 class Mapper
@@ -224,13 +223,12 @@ class Mapper
     while directions_changed < 4
       current_index = @center_triangle.index
       res = @_tryLockSectorAround( current_index, { rows: rows, cols: cols } )
+      @_changeDirection()
+      ++directions_changed
       if res isnt null and res.index isnt null and res.triangles.length > 0
         @center_triangle = @getTriangleWithIndex( res.index )
         @_lockTriangles( res.triangles )
         return @_getMassCenter( res.triangles )
-      else
-        @_changeDirection()
-        ++directions_changed
     null
  
   getTriangleWithIndex: ( index ) ->
@@ -251,6 +249,7 @@ class Mapper
       bottom: size.rows - 1 - trunc_row
       right: size.cols - 1 - trunc_col
     }
+
     while !triangle.isWhite() and
       current_row >= paddings.left and
         current_col >= paddings.top and
@@ -260,7 +259,9 @@ class Mapper
       current_col += @direction[ 0 ][ 1 ]
       triangle = @getTriangleWithIndex( { row: current_row, col: current_col } )
     
-    return null if !triangle.isWhite()
+    if !triangle.isWhite()
+      _log( triangle )
+      return null
     
     res = {
       triangles: []
@@ -270,7 +271,7 @@ class Mapper
     for i in [ ( current_row - paddings.top )..( current_row + paddings.bottom ) ]
       for j in [ ( current_col - paddings.left )..( current_col + paddings.right ) ]
         tmp_triangle = @getTriangleWithIndex( { row: current_row, col: current_col } )
-        if tmp_triangle.isRed()
+        if tmp_triangle.isRed() or tmp_triangle.isBlue()
           return null
         else
           res.triangles.push( tmp_triangle )
@@ -279,16 +280,20 @@ class Mapper
     
 
   _lockTriangles: ( triangles ) ->
+    _log( triangles )
     bound_values = []
     if triangles.length > 2
       half = Math.floor( triangles.length / 2 )
       bound_values = [ 0, triangles.length - 1, half, half + 1 ]
-    for i in [ 0..( triangles.length - 1 ) ]
+    
+    i = 0
+    for triangle in triangles
+      index = triangle.index
       if bound_values.indexOf( i ) isnt -1
-        triangles[ i ].blue()
+        @triangles[ index.row ][ index.col ].blue()
       else
-        triangles[ i ].red()
-    triangles
+        @triangles[ index.row ][ index.col ].red()
+      ++i
 
 
   _getMassCenter: ( triangles ) ->

@@ -144,13 +144,12 @@
     VisitMarker.prototype.draw = function(paper, center) {
       var r;
       r = this.getRadius() * opts.graphics.net_step;
-      this.element = paper.circle(center.x, center.y, r).attr({
+      this.element = paper.set();
+      this.element.push(paper.circle(center.x, center.y, r).attr({
         fill: "blue",
         stroke: "none"
-      });
-      _log(this.host_log.host);
-      paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"));
-      return true;
+      }));
+      return this.element.push(paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"), 30));
     };
     return VisitMarker;
   })();
@@ -284,13 +283,12 @@
           rows: rows,
           cols: cols
         });
+        this._changeDirection();
+        ++directions_changed;
         if (res !== null && res.index !== null && res.triangles.length > 0) {
           this.center_triangle = this.getTriangleWithIndex(res.index);
           this._lockTriangles(res.triangles);
           return this._getMassCenter(res.triangles);
-        } else {
-          this._changeDirection();
-          ++directions_changed;
         }
       }
       return null;
@@ -323,6 +321,7 @@
         });
       }
       if (!triangle.isWhite()) {
+        _log(triangle);
         return null;
       }
       res = {
@@ -335,7 +334,7 @@
             row: current_row,
             col: current_col
           });
-          if (tmp_triangle.isRed()) {
+          if (tmp_triangle.isRed() || tmp_triangle.isBlue()) {
             return null;
           } else {
             res.triangles.push(tmp_triangle);
@@ -349,20 +348,26 @@
       return res;
     };
     Mapper.prototype._lockTriangles = function(triangles) {
-      var bound_values, half, i, _ref;
+      var bound_values, half, i, index, triangle, _i, _len, _results;
+      _log(triangles);
       bound_values = [];
       if (triangles.length > 2) {
         half = Math.floor(triangles.length / 2);
         bound_values = [0, triangles.length - 1, half, half + 1];
       }
-      for (i = 0, _ref = triangles.length - 1; 0 <= _ref ? i <= _ref : i >= _ref; 0 <= _ref ? i++ : i--) {
+      i = 0;
+      _results = [];
+      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
+        triangle = triangles[_i];
+        index = triangle.index;
         if (bound_values.indexOf(i) !== -1) {
-          triangles[i].blue();
+          this.triangles[index.row][index.col].blue();
         } else {
-          triangles[i].red();
+          this.triangles[index.row][index.col].red();
         }
+        _results.push(++i);
       }
-      return triangles;
+      return _results;
     };
     Mapper.prototype._getMassCenter = function(triangles) {
       var center, pos, triangle, _i, _len;
@@ -655,13 +660,12 @@
     VisitMarker.prototype.draw = function(paper, center) {
       var r;
       r = this.getRadius() * opts.graphics.net_step;
-      this.element = paper.circle(center.x, center.y, r).attr({
+      this.element = paper.set();
+      this.element.push(paper.circle(center.x, center.y, r).attr({
         fill: "blue",
         stroke: "none"
-      });
-      _log(this.host_log.host);
-      paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"));
-      return true;
+      }));
+      return this.element.push(paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"), 30));
     };
     return VisitMarker;
   })();
@@ -795,13 +799,12 @@
           rows: rows,
           cols: cols
         });
+        this._changeDirection();
+        ++directions_changed;
         if (res !== null && res.index !== null && res.triangles.length > 0) {
           this.center_triangle = this.getTriangleWithIndex(res.index);
           this._lockTriangles(res.triangles);
           return this._getMassCenter(res.triangles);
-        } else {
-          this._changeDirection();
-          ++directions_changed;
         }
       }
       return null;
@@ -834,6 +837,7 @@
         });
       }
       if (!triangle.isWhite()) {
+        _log(triangle);
         return null;
       }
       res = {
@@ -846,7 +850,7 @@
             row: current_row,
             col: current_col
           });
-          if (tmp_triangle.isRed()) {
+          if (tmp_triangle.isRed() || tmp_triangle.isBlue()) {
             return null;
           } else {
             res.triangles.push(tmp_triangle);
@@ -860,20 +864,26 @@
       return res;
     };
     Mapper.prototype._lockTriangles = function(triangles) {
-      var bound_values, half, i, _ref;
+      var bound_values, half, i, index, triangle, _i, _len, _results;
+      _log(triangles);
       bound_values = [];
       if (triangles.length > 2) {
         half = Math.floor(triangles.length / 2);
         bound_values = [0, triangles.length - 1, half, half + 1];
       }
-      for (i = 0, _ref = triangles.length - 1; 0 <= _ref ? i <= _ref : i >= _ref; 0 <= _ref ? i++ : i--) {
+      i = 0;
+      _results = [];
+      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
+        triangle = triangles[_i];
+        index = triangle.index;
         if (bound_values.indexOf(i) !== -1) {
-          triangles[i].blue();
+          this.triangles[index.row][index.col].blue();
         } else {
-          triangles[i].red();
+          this.triangles[index.row][index.col].red();
         }
+        _results.push(++i);
       }
-      return triangles;
+      return _results;
     };
     Mapper.prototype._getMassCenter = function(triangles) {
       var center, pos, triangle, _i, _len;
