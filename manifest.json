@@ -1,0 +1,12 @@
+{
+  "name": "Chrome history graph",
+  "version": "1.0",
+  "manifest_version": 2,
+  "description": "Chrome history displayed using graph.",
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "permissions": [
+    "tabs", "http://*/*", "history"
+  ]
+}
