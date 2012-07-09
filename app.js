@@ -1,5 +1,6 @@
 (function() {
   var HistoryLog, HostLog, IS_DEV, Mapper, Triangle, Vertex, VisitMarker, drawHistory, history, host_log_pool, initRaphael, loadHistory, main, opts, updHostLogVal, _inited, _log;
+  var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
   _inited = false;
   IS_DEV = true;
   opts = {
@@ -22,8 +23,7 @@
           return r_max;
         }
         return r_min + v * (r_max - r_min) / (v_max - v_min);
-      },
-      scroll_direction: 1
+      }
     }
   };
   _log = function(d) {
@@ -31,8 +31,8 @@
   };
   history = [];
   host_log_pool = {};
-  HistoryLog = new Class({
-    initialize: function(data) {
+  HistoryLog = (function() {
+    function HistoryLog(data) {
       this.lastVisitTime = data.lastVisitTime || 0;
       this.title = data.title || "";
       this.typedCount = data.typedCount || 0;
@@ -41,15 +41,12 @@
       this.host = "";
       this.sub_host = "";
       this.parseURL();
-      return null;
-    },
-    parseURL: function() {
+    }
+    HistoryLog.prototype.parseURL = function() {
       var host_parts, parsed_host, parsed_url, sub_host_parts;
       parsed_url = new URI(this.url);
       parsed_host = parsed_url.parsed.host;
-      if (parsed_host !== void 0 && parsed_host !== null) {
-        parsed_host = parsed_host.replace(/^www\./, "");
-      }
+      parsed_host = parsed_host != null ? parsed_host.replace(/^www\./, "") : void 0;
       host_parts = parsed_host.split(/\./);
       if (host_parts.length > 2) {
         sub_host_parts = host_parts.slice(0, host_parts.length - 2);
@@ -57,8 +54,8 @@
         host_parts = host_parts.slice(-2);
       }
       return this.host = host_parts.join(".");
-    },
-    isWithoutHost: function() {
+    };
+    HistoryLog.prototype.isWithoutHost = function() {
       var v, _i, _len, _ref;
       _ref = [void 0, "", null];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
@@ -68,23 +65,26 @@
         }
       }
       return false;
-    }
-  });
-  Vertex = new Class({
-    initialize: function(x, y) {
-      this.state = 0;
+    };
+    return HistoryLog;
+  })();
+  Vertex = (function() {
+    function Vertex(x, y) {
       this.x = x;
       this.y = y;
-      return null;
     }
-  });
-  Triangle = new Class({
-    initialize: function(data) {
+    return Vertex;
+  })();
+  Triangle = (function() {
+    function Triangle(data) {
       this.vertexes = data.vertexes || [];
       this.state = 0;
-      return null;
-    },
-    getCenter: function() {
+      this.index = {
+        x: 0,
+        y: 0
+      };
+    }
+    Triangle.prototype.getCenter = function() {
       var vertex, x_sum, y_sum, _i, _len, _ref;
       x_sum = 0;
       y_sum = 0;
@@ -95,8 +95,12 @@
         y_sum += vertex.y;
       }
       return new Vertex(x_sum / 3, y_sum / 3);
-    },
-    drawOn: function(paper) {
+    };
+    Triangle.prototype.setIndex = function(val) {
+      this.index.row = val[0];
+      return this.index.col = val[1];
+    };
+    Triangle.prototype.drawOn = function(paper) {
       var tr, vertex, vs, _i, _len;
       vs = this.vertexes;
       tr = paper.set();
@@ -107,33 +111,49 @@
       return tr.attr({
         fill: "blue"
       });
+    };
+    Triangle.prototype.blue = function() {
+      return this.state = 1;
+    };
+    Triangle.prototype.red = function() {
+      return this.state = 2;
+    };
+    Triangle.prototype.isBlue = function() {
+      return this.state === 1;
+    };
+    Triangle.prototype.isWhite = function() {
+      return this.state === 0;
+    };
+    Triangle.prototype.isRed = function() {
+      return this.state === 2;
+    };
+    return Triangle;
+  })();
+  VisitMarker = (function() {
+    function VisitMarker(host_log) {
+      this.host_log = host_log;
     }
-  });
-  VisitMarker = new Class({
-    initialize: function(data) {
-      return this.data = data;
-    },
-    getDim: function() {
-      var radius;
-      return radius = opts.graphics.approximate(this.data.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
-    }
-  });
-  Mapper = new Class({
-    initialize: function(data) {
-      var self;
-      self = this;
+    VisitMarker.prototype.getDim = function() {
+      var r;
+      r = opts.graphics.approximate(this.host_log.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
+      return [4 * r, 2 * r];
+    };
+    VisitMarker.prototype.draw = function(center) {};
+    return VisitMarker;
+  })();
+  Mapper = (function() {
+    function Mapper(data) {
       this.paper = data.paper;
       this.net = {};
       this.triangles = [];
       this.buildNet();
       if (IS_DEV) {
-        self.drawNet();
+        this.drawNet();
       }
-      return null;
-    },
-    next: function() {},
-    prev: function() {},
-    drawNet: function() {
+      this.direction = [[0, 1]];
+      this.transform_matrix = [[0, 1], [-1, 0]];
+    }
+    Mapper.prototype.drawNet = function() {
       var row, triangle, _i, _len, _ref, _results;
       _ref = this.triangles;
       _results = [];
@@ -150,8 +170,8 @@
         }).call(this));
       }
       return _results;
-    },
-    buildNet: function(cb) {
+    };
+    Mapper.prototype.buildNet = function(cb) {
       var column_index, max_height, max_width, row_index, triangle1, triangle2, x11, x12, x21, x22, x_step, y1, y1_upd, y2, y2_upd, y_step;
       y_step = 0.5 * Math.sqrt(3) * opts.graphics.net_step;
       x_step = opts.graphics.net_step;
@@ -179,12 +199,14 @@
           triangle1 = new Triangle({
             vertexes: [new Vertex(x11, y1_upd), new Vertex(x12, y1_upd), new Vertex(x21, y2_upd)]
           });
+          triangle1.setIndex([row_index, column_index]);
           this.triangles[row_index][column_index] = triangle1;
           ++column_index;
           if (x22 <= max_width) {
             triangle2 = new Triangle({
               vertexes: [new Vertex(x12, y1_upd), new Vertex(x21, y2_upd), new Vertex(x22, y2_upd)]
             });
+            triangle2.setIndex([row_index, column_index]);
             this.triangles[row_index][column_index] = triangle2;
             ++column_index;
           }
@@ -200,49 +222,197 @@
       if (typeof cb === "function") {
         return cb.call(this);
       }
-    },
-    getCenterTriangle: function() {
+    };
+    Mapper.prototype.getCenterTriangle = function() {
       var triangle, x_index, y_index;
       y_index = Math.round(this.triangles.length / 2) - 1;
       x_index = Math.round(this.triangles[y_index].length / 2) - 1;
       triangle = this.triangles[y_index][x_index];
       return triangle;
-    },
-    highlightCenterTriangle: function() {
+    };
+    Mapper.prototype._changeDirection = function() {
+      return this.direction = this._matrixMultiply(this.direction, this.transform_matrix);
+    };
+    Mapper.prototype._matrixMultiply = function(m1, m2) {
+      var ix0, ix1, ix2, res, v, _ref, _ref2, _ref3;
+      res = [];
+      if (m1[0].length !== m2.length) {
+        throw "Wrong matrices dimension given.";
+      }
+      for (ix2 = 0, _ref = m2[0].length - 1; 0 <= _ref ? ix2 <= _ref : ix2 >= _ref; 0 <= _ref ? ix2++ : ix2--) {
+        for (ix1 = 0, _ref2 = m1.length - 1; 0 <= _ref2 ? ix1 <= _ref2 : ix1 >= _ref2; 0 <= _ref2 ? ix1++ : ix1--) {
+          v = 0;
+          for (ix0 = 0, _ref3 = m2.length - 1; 0 <= _ref3 ? ix0 <= _ref3 : ix0 >= _ref3; 0 <= _ref3 ? ix0++ : ix0--) {
+            v += m1[ix1][ix0] * m2[ix0][ix2];
+          }
+          res[ix1] || (res[ix1] = []);
+          res[ix1][ix2] = v;
+        }
+      }
+      return res;
+    };
+    Mapper.prototype.highlightCenterTriangle = function() {
       var center, circle;
       center = this.getCenterTriangle().getCenter();
       circle = this.paper.circle(center.x, center.y, 5);
       return circle.attr({
         fill: "red"
       });
-    },
-    draw: function(data) {
-      var center;
+    };
+    Mapper.prototype.getCenterForSizeWithLock = function(size) {
+      var cols, current_index, directions_changed, res, rows;
+      cols = 1 + Math.floor(size[0]);
+      rows = 1 + Math.floor(size[1]);
+      this.center_triangle || (this.center_triangle = this.getCenterTriangle());
+      directions_changed = 0;
+      while (directions_changed < 4) {
+        current_index = this.center_triangle.index;
+        res = this._tryLockSectorAround(current_index, {
+          rows: rows,
+          cols: cols
+        });
+        if (res !== null && res.index !== null && res.triangles.length > 0) {
+          this.center_triangle = this.getTriangleWithIndex(res.index);
+          this._lockTriangles(res.triangles);
+          return this._getMassCenter(res.triangles);
+        } else {
+          this._changeDirection();
+          ++directions_changed;
+        }
+      }
+      return null;
+    };
+    Mapper.prototype.getTriangleWithIndex = function(index) {
+      return this.triangles[index.row][index.col];
+    };
+    Mapper.prototype._tryLockSectorAround = function(index, size) {
+      var bounds, current_col, current_row, i, j, max_col, max_row, paddings, res, tmp_triangle, triangle, trunc_col, trunc_row, _ref, _ref2, _ref3, _ref4;
+      current_row = index.row;
+      current_col = index.col;
+      bounds = this.getBoundSize();
+      max_row = bounds.rows;
+      max_col = bounds.cols;
+      triangle = this.getTriangleWithIndex(index);
+      trunc_row = Math.floor(size.rows / 2);
+      trunc_col = Math.floor(size.cols / 2);
+      paddings = {
+        top: trunc_row,
+        left: trunc_col,
+        bottom: size.rows - 1 - trunc_row,
+        right: size.cols - 1 - trunc_col
+      };
+      while (!triangle.isWhite() && current_row >= paddings.left && current_col >= paddings.top && current_row <= (max_row - paddings.bottom) && current_col <= (max_col - paddings.right)) {
+        current_row += this.direction[0][0];
+        current_col += this.direction[0][1];
+        triangle = this.getTriangleWithIndex({
+          row: current_row,
+          col: current_col
+        });
+      }
+      if (!triangle.isWhite()) {
+        return null;
+      }
+      res = {
+        triangles: [],
+        index: null
+      };
+      for (i = _ref = current_row - paddings.top, _ref2 = current_row + paddings.bottom; _ref <= _ref2 ? i <= _ref2 : i >= _ref2; _ref <= _ref2 ? i++ : i--) {
+        for (j = _ref3 = current_col - paddings.left, _ref4 = current_col + paddings.right; _ref3 <= _ref4 ? j <= _ref4 : j >= _ref4; _ref3 <= _ref4 ? j++ : j--) {
+          tmp_triangle = this.getTriangleWithIndex({
+            row: current_row,
+            col: current_col
+          });
+          if (tmp_triangle.isRed()) {
+            return null;
+          } else {
+            res.triangles.push(tmp_triangle);
+          }
+        }
+      }
+      res.index = {
+        row: current_row,
+        col: current_col
+      };
+      return res;
+    };
+    Mapper.prototype._lockTriangles = function(triangles) {
+      var bound_values, half, i, _ref;
+      bound_values = [];
+      if (triangles.length > 2) {
+        half = Math.floor(triangles.length / 2);
+        bound_values = [0, triangles.length - 1, half, half + 1];
+      }
+      for (i = 0, _ref = triangles.length - 1; 0 <= _ref ? i <= _ref : i >= _ref; 0 <= _ref ? i++ : i--) {
+        if (bound_values.indexOf(i) !== -1) {
+          triangles[i].blue();
+        } else {
+          triangles[i].red();
+        }
+      }
+      return triangles;
+    };
+    Mapper.prototype._getMassCenter = function(triangles) {
+      var center, pos, triangle, _i, _len;
+      if (triangles.length === 0) {
+        return null;
+      }
+      pos = {
+        x: 0,
+        y: 0
+      };
+      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
+        triangle = triangles[_i];
+        center = triangle.getCenter();
+        pos.x += center.x;
+        pos.y += center.y;
+      }
+      pos.x /= triangles.length;
+      pos.y /= triangles.length;
+      return new Vertex(pos.x, pos.y);
+    };
+    Mapper.prototype.getBoundSize = function() {
+      return {
+        rows: this.triangles.length - 1,
+        cols: this.triangles[0].length - 1
+      };
+    };
+    Mapper.prototype.draw = function(data) {
+      var center, host_log, host_name, marker, _results;
       center = this.getCenterTriangle();
       this.highlightCenterTriangle();
-      return _log(data);
-    }
-  });
-  HostLog = new Class({
-    initialize: function(data) {
+      _results = [];
+      for (host_name in data) {
+        host_log = data[host_name];
+        marker = new VisitMarker(host_log);
+        center = this.getCenterForSizeWithLock(marker.getDim());
+        if (center === null) {
+          return;
+        }
+        _results.push(marker.draw(center));
+      }
+      return _results;
+    };
+    return Mapper;
+  })();
+  HostLog = (function() {
+    function HostLog(data) {
       this.host = data.host || "";
       this.log_pool = [];
       this.visit_counter = 0;
       this.typed_counter = 0;
       this.normalized_val = 0;
-      return null;
-    },
-    appendLog: function(log) {
+    }
+    HostLog.prototype.appendLog = function(log) {
       this.log_pool.push(log);
       return this._calcCounters();
-    },
-    getComplexVal: function() {
+    };
+    HostLog.prototype.getComplexVal = function() {
       return this.visit_counter + this.typed_counter;
-    },
-    setNormalizedVal: function(val) {
+    };
+    HostLog.prototype.setNormalizedVal = function(val) {
       return this.normalized_val = val;
-    },
-    _calcCounters: function() {
+    };
+    HostLog.prototype._calcCounters = function() {
       var log, typed_counter, visit_counter, _i, _len, _ref;
       visit_counter = 0;
       typed_counter = 0;
@@ -254,18 +424,18 @@
       }
       this.visit_counter = visit_counter;
       return this.typed_counter = typed_counter;
-    }
-  });
+    };
+    return HostLog;
+  })();
   main = function() {
-    var paper, self;
+    var paper;
     if (_inited) {
       return;
     }
     _inited = true;
-    self = this;
     paper = initRaphael();
-    return loadHistory(function(data) {
-      var data_entry, host_log_val, _i, _len;
+    return loadHistory(__bind(function(data) {
+      var data_entry, _i, _len;
       for (_i = 0, _len = data.length; _i < _len; _i++) {
         data_entry = data[_i];
         if (data_entry.isWithoutHost()) {
@@ -278,11 +448,11 @@
         }
         host_log_pool[data_entry.host].appendLog(data_entry);
       }
-      host_log_val = updHostLogVal(host_log_val);
-      return drawHistory.call(self, paper, host_log_pool);
-    });
+      host_log_pool = updHostLogVal(host_log_pool);
+      return drawHistory.call(this, paper, host_log_pool);
+    }, this));
   };
-  updHostLogVal = function(host_log_val) {
+  updHostLogVal = function(host_log_pool) {
     var host_log, key, max_val, min_val, normalized_val, val;
     min_val = null;
     max_val = null;
@@ -310,7 +480,7 @@
     return chrome.history.search({
       text: "",
       maxResults: opts.history.limit
-    }, function(data) {
+    }, __bind(function(data) {
       var data_entry, _i, _len;
       for (_i = 0, _len = data.length; _i < _len; _i++) {
         data_entry = data[_i];
@@ -319,7 +489,7 @@
       if (typeof cb === "function") {
         return cb.call(this, history);
       }
-    });
+    }, this));
   };
   drawHistory = function(paper, data, cb) {
     var mapper;
@@ -351,8 +521,7 @@
           return r_max;
         }
         return r_min + v * (r_max - r_min) / (v_max - v_min);
-      },
-      scroll_direction: 1
+      }
     }
   };
   _log = function(d) {
@@ -360,8 +529,8 @@
   };
   history = [];
   host_log_pool = {};
-  HistoryLog = new Class({
-    initialize: function(data) {
+  HistoryLog = (function() {
+    function HistoryLog(data) {
       this.lastVisitTime = data.lastVisitTime || 0;
       this.title = data.title || "";
       this.typedCount = data.typedCount || 0;
@@ -370,15 +539,12 @@
       this.host = "";
       this.sub_host = "";
       this.parseURL();
-      return null;
-    },
-    parseURL: function() {
+    }
+    HistoryLog.prototype.parseURL = function() {
       var host_parts, parsed_host, parsed_url, sub_host_parts;
       parsed_url = new URI(this.url);
       parsed_host = parsed_url.parsed.host;
-      if (parsed_host !== void 0 && parsed_host !== null) {
-        parsed_host = parsed_host.replace(/^www\./, "");
-      }
+      parsed_host = parsed_host != null ? parsed_host.replace(/^www\./, "") : void 0;
       host_parts = parsed_host.split(/\./);
       if (host_parts.length > 2) {
         sub_host_parts = host_parts.slice(0, host_parts.length - 2);
@@ -386,8 +552,8 @@
         host_parts = host_parts.slice(-2);
       }
       return this.host = host_parts.join(".");
-    },
-    isWithoutHost: function() {
+    };
+    HistoryLog.prototype.isWithoutHost = function() {
       var v, _i, _len, _ref;
       _ref = [void 0, "", null];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
@@ -397,23 +563,26 @@
         }
       }
       return false;
-    }
-  });
-  Vertex = new Class({
-    initialize: function(x, y) {
-      this.state = 0;
+    };
+    return HistoryLog;
+  })();
+  Vertex = (function() {
+    function Vertex(x, y) {
       this.x = x;
       this.y = y;
-      return null;
     }
-  });
-  Triangle = new Class({
-    initialize: function(data) {
+    return Vertex;
+  })();
+  Triangle = (function() {
+    function Triangle(data) {
       this.vertexes = data.vertexes || [];
       this.state = 0;
-      return null;
-    },
-    getCenter: function() {
+      this.index = {
+        x: 0,
+        y: 0
+      };
+    }
+    Triangle.prototype.getCenter = function() {
       var vertex, x_sum, y_sum, _i, _len, _ref;
       x_sum = 0;
       y_sum = 0;
@@ -424,8 +593,12 @@
         y_sum += vertex.y;
       }
       return new Vertex(x_sum / 3, y_sum / 3);
-    },
-    drawOn: function(paper) {
+    };
+    Triangle.prototype.setIndex = function(val) {
+      this.index.row = val[0];
+      return this.index.col = val[1];
+    };
+    Triangle.prototype.drawOn = function(paper) {
       var tr, vertex, vs, _i, _len;
       vs = this.vertexes;
       tr = paper.set();
@@ -436,33 +609,49 @@
       return tr.attr({
         fill: "blue"
       });
+    };
+    Triangle.prototype.blue = function() {
+      return this.state = 1;
+    };
+    Triangle.prototype.red = function() {
+      return this.state = 2;
+    };
+    Triangle.prototype.isBlue = function() {
+      return this.state === 1;
+    };
+    Triangle.prototype.isWhite = function() {
+      return this.state === 0;
+    };
+    Triangle.prototype.isRed = function() {
+      return this.state === 2;
+    };
+    return Triangle;
+  })();
+  VisitMarker = (function() {
+    function VisitMarker(host_log) {
+      this.host_log = host_log;
     }
-  });
-  VisitMarker = new Class({
-    initialize: function(data) {
-      return this.data = data;
-    },
-    getDim: function() {
-      var radius;
-      return radius = opts.graphics.approximate(this.data.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
-    }
-  });
-  Mapper = new Class({
-    initialize: function(data) {
-      var self;
-      self = this;
+    VisitMarker.prototype.getDim = function() {
+      var r;
+      r = opts.graphics.approximate(this.host_log.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
+      return [4 * r, 2 * r];
+    };
+    VisitMarker.prototype.draw = function(center) {};
+    return VisitMarker;
+  })();
+  Mapper = (function() {
+    function Mapper(data) {
       this.paper = data.paper;
       this.net = {};
       this.triangles = [];
       this.buildNet();
       if (IS_DEV) {
-        self.drawNet();
+        this.drawNet();
       }
-      return null;
-    },
-    next: function() {},
-    prev: function() {},
-    drawNet: function() {
+      this.direction = [[0, 1]];
+      this.transform_matrix = [[0, 1], [-1, 0]];
+    }
+    Mapper.prototype.drawNet = function() {
       var row, triangle, _i, _len, _ref, _results;
       _ref = this.triangles;
       _results = [];
@@ -479,8 +668,8 @@
         }).call(this));
       }
       return _results;
-    },
-    buildNet: function(cb) {
+    };
+    Mapper.prototype.buildNet = function(cb) {
       var column_index, max_height, max_width, row_index, triangle1, triangle2, x11, x12, x21, x22, x_step, y1, y1_upd, y2, y2_upd, y_step;
       y_step = 0.5 * Math.sqrt(3) * opts.graphics.net_step;
       x_step = opts.graphics.net_step;
@@ -508,12 +697,14 @@
           triangle1 = new Triangle({
             vertexes: [new Vertex(x11, y1_upd), new Vertex(x12, y1_upd), new Vertex(x21, y2_upd)]
           });
+          triangle1.setIndex([row_index, column_index]);
           this.triangles[row_index][column_index] = triangle1;
           ++column_index;
           if (x22 <= max_width) {
             triangle2 = new Triangle({
               vertexes: [new Vertex(x12, y1_upd), new Vertex(x21, y2_upd), new Vertex(x22, y2_upd)]
             });
+            triangle2.setIndex([row_index, column_index]);
             this.triangles[row_index][column_index] = triangle2;
             ++column_index;
           }
@@ -529,49 +720,197 @@
       if (typeof cb === "function") {
         return cb.call(this);
       }
-    },
-    getCenterTriangle: function() {
+    };
+    Mapper.prototype.getCenterTriangle = function() {
       var triangle, x_index, y_index;
       y_index = Math.round(this.triangles.length / 2) - 1;
       x_index = Math.round(this.triangles[y_index].length / 2) - 1;
       triangle = this.triangles[y_index][x_index];
       return triangle;
-    },
-    highlightCenterTriangle: function() {
+    };
+    Mapper.prototype._changeDirection = function() {
+      return this.direction = this._matrixMultiply(this.direction, this.transform_matrix);
+    };
+    Mapper.prototype._matrixMultiply = function(m1, m2) {
+      var ix0, ix1, ix2, res, v, _ref, _ref2, _ref3;
+      res = [];
+      if (m1[0].length !== m2.length) {
+        throw "Wrong matrices dimension given.";
+      }
+      for (ix2 = 0, _ref = m2[0].length - 1; 0 <= _ref ? ix2 <= _ref : ix2 >= _ref; 0 <= _ref ? ix2++ : ix2--) {
+        for (ix1 = 0, _ref2 = m1.length - 1; 0 <= _ref2 ? ix1 <= _ref2 : ix1 >= _ref2; 0 <= _ref2 ? ix1++ : ix1--) {
+          v = 0;
+          for (ix0 = 0, _ref3 = m2.length - 1; 0 <= _ref3 ? ix0 <= _ref3 : ix0 >= _ref3; 0 <= _ref3 ? ix0++ : ix0--) {
+            v += m1[ix1][ix0] * m2[ix0][ix2];
+          }
+          res[ix1] || (res[ix1] = []);
+          res[ix1][ix2] = v;
+        }
+      }
+      return res;
+    };
+    Mapper.prototype.highlightCenterTriangle = function() {
       var center, circle;
       center = this.getCenterTriangle().getCenter();
       circle = this.paper.circle(center.x, center.y, 5);
       return circle.attr({
         fill: "red"
       });
-    },
-    draw: function(data) {
-      var center;
+    };
+    Mapper.prototype.getCenterForSizeWithLock = function(size) {
+      var cols, current_index, directions_changed, res, rows;
+      cols = 1 + Math.floor(size[0]);
+      rows = 1 + Math.floor(size[1]);
+      this.center_triangle || (this.center_triangle = this.getCenterTriangle());
+      directions_changed = 0;
+      while (directions_changed < 4) {
+        current_index = this.center_triangle.index;
+        res = this._tryLockSectorAround(current_index, {
+          rows: rows,
+          cols: cols
+        });
+        if (res !== null && res.index !== null && res.triangles.length > 0) {
+          this.center_triangle = this.getTriangleWithIndex(res.index);
+          this._lockTriangles(res.triangles);
+          return this._getMassCenter(res.triangles);
+        } else {
+          this._changeDirection();
+          ++directions_changed;
+        }
+      }
+      return null;
+    };
+    Mapper.prototype.getTriangleWithIndex = function(index) {
+      return this.triangles[index.row][index.col];
+    };
+    Mapper.prototype._tryLockSectorAround = function(index, size) {
+      var bounds, current_col, current_row, i, j, max_col, max_row, paddings, res, tmp_triangle, triangle, trunc_col, trunc_row, _ref, _ref2, _ref3, _ref4;
+      current_row = index.row;
+      current_col = index.col;
+      bounds = this.getBoundSize();
+      max_row = bounds.rows;
+      max_col = bounds.cols;
+      triangle = this.getTriangleWithIndex(index);
+      trunc_row = Math.floor(size.rows / 2);
+      trunc_col = Math.floor(size.cols / 2);
+      paddings = {
+        top: trunc_row,
+        left: trunc_col,
+        bottom: size.rows - 1 - trunc_row,
+        right: size.cols - 1 - trunc_col
+      };
+      while (!triangle.isWhite() && current_row >= paddings.left && current_col >= paddings.top && current_row <= (max_row - paddings.bottom) && current_col <= (max_col - paddings.right)) {
+        current_row += this.direction[0][0];
+        current_col += this.direction[0][1];
+        triangle = this.getTriangleWithIndex({
+          row: current_row,
+          col: current_col
+        });
+      }
+      if (!triangle.isWhite()) {
+        return null;
+      }
+      res = {
+        triangles: [],
+        index: null
+      };
+      for (i = _ref = current_row - paddings.top, _ref2 = current_row + paddings.bottom; _ref <= _ref2 ? i <= _ref2 : i >= _ref2; _ref <= _ref2 ? i++ : i--) {
+        for (j = _ref3 = current_col - paddings.left, _ref4 = current_col + paddings.right; _ref3 <= _ref4 ? j <= _ref4 : j >= _ref4; _ref3 <= _ref4 ? j++ : j--) {
+          tmp_triangle = this.getTriangleWithIndex({
+            row: current_row,
+            col: current_col
+          });
+          if (tmp_triangle.isRed()) {
+            return null;
+          } else {
+            res.triangles.push(tmp_triangle);
+          }
+        }
+      }
+      res.index = {
+        row: current_row,
+        col: current_col
+      };
+      return res;
+    };
+    Mapper.prototype._lockTriangles = function(triangles) {
+      var bound_values, half, i, _ref;
+      bound_values = [];
+      if (triangles.length > 2) {
+        half = Math.floor(triangles.length / 2);
+        bound_values = [0, triangles.length - 1, half, half + 1];
+      }
+      for (i = 0, _ref = triangles.length - 1; 0 <= _ref ? i <= _ref : i >= _ref; 0 <= _ref ? i++ : i--) {
+        if (bound_values.indexOf(i) !== -1) {
+          triangles[i].blue();
+        } else {
+          triangles[i].red();
+        }
+      }
+      return triangles;
+    };
+    Mapper.prototype._getMassCenter = function(triangles) {
+      var center, pos, triangle, _i, _len;
+      if (triangles.length === 0) {
+        return null;
+      }
+      pos = {
+        x: 0,
+        y: 0
+      };
+      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
+        triangle = triangles[_i];
+        center = triangle.getCenter();
+        pos.x += center.x;
+        pos.y += center.y;
+      }
+      pos.x /= triangles.length;
+      pos.y /= triangles.length;
+      return new Vertex(pos.x, pos.y);
+    };
+    Mapper.prototype.getBoundSize = function() {
+      return {
+        rows: this.triangles.length - 1,
+        cols: this.triangles[0].length - 1
+      };
+    };
+    Mapper.prototype.draw = function(data) {
+      var center, host_log, host_name, marker, _results;
       center = this.getCenterTriangle();
       this.highlightCenterTriangle();
-      return _log(data);
-    }
-  });
-  HostLog = new Class({
-    initialize: function(data) {
+      _results = [];
+      for (host_name in data) {
+        host_log = data[host_name];
+        marker = new VisitMarker(host_log);
+        center = this.getCenterForSizeWithLock(marker.getDim());
+        if (center === null) {
+          return;
+        }
+        _results.push(marker.draw(center));
+      }
+      return _results;
+    };
+    return Mapper;
+  })();
+  HostLog = (function() {
+    function HostLog(data) {
       this.host = data.host || "";
       this.log_pool = [];
       this.visit_counter = 0;
       this.typed_counter = 0;
       this.normalized_val = 0;
-      return null;
-    },
-    appendLog: function(log) {
+    }
+    HostLog.prototype.appendLog = function(log) {
       this.log_pool.push(log);
       return this._calcCounters();
-    },
-    getComplexVal: function() {
+    };
+    HostLog.prototype.getComplexVal = function() {
       return this.visit_counter + this.typed_counter;
-    },
-    setNormalizedVal: function(val) {
+    };
+    HostLog.prototype.setNormalizedVal = function(val) {
       return this.normalized_val = val;
-    },
-    _calcCounters: function() {
+    };
+    HostLog.prototype._calcCounters = function() {
       var log, typed_counter, visit_counter, _i, _len, _ref;
       visit_counter = 0;
       typed_counter = 0;
@@ -583,18 +922,18 @@
       }
       this.visit_counter = visit_counter;
       return this.typed_counter = typed_counter;
-    }
-  });
+    };
+    return HostLog;
+  })();
   main = function() {
-    var paper, self;
+    var paper;
     if (_inited) {
       return;
     }
     _inited = true;
-    self = this;
     paper = initRaphael();
-    return loadHistory(function(data) {
-      var data_entry, host_log_val, _i, _len;
+    return loadHistory(__bind(function(data) {
+      var data_entry, _i, _len;
       for (_i = 0, _len = data.length; _i < _len; _i++) {
         data_entry = data[_i];
         if (data_entry.isWithoutHost()) {
@@ -607,11 +946,11 @@
         }
         host_log_pool[data_entry.host].appendLog(data_entry);
       }
-      host_log_val = updHostLogVal(host_log_val);
-      return drawHistory.call(self, paper, host_log_pool);
-    });
+      host_log_pool = updHostLogVal(host_log_pool);
+      return drawHistory.call(this, paper, host_log_pool);
+    }, this));
   };
-  updHostLogVal = function(host_log_val) {
+  updHostLogVal = function(host_log_pool) {
     var host_log, key, max_val, min_val, normalized_val, val;
     min_val = null;
     max_val = null;
@@ -639,7 +978,7 @@
     return chrome.history.search({
       text: "",
       maxResults: opts.history.limit
-    }, function(data) {
+    }, __bind(function(data) {
       var data_entry, _i, _len;
       for (_i = 0, _len = data.length; _i < _len; _i++) {
         data_entry = data[_i];
@@ -648,7 +987,7 @@
       if (typeof cb === "function") {
         return cb.call(this, history);
       }
-    });
+    }, this));
   };
   drawHistory = function(paper, data, cb) {
     var mapper;
