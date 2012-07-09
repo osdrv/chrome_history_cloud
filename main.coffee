@@ -103,18 +103,26 @@ class VisitMarker
   constructor: ( host_log ) ->
     @host_log = host_log
 
-  getDim: () ->
-    r = opts.graphics.approximate(
+  getRadius: () ->
+    opts.graphics.approximate(
       @host_log.normalized_val,
       0,
       1,
       opts.graphics.R_min,
       opts.graphics.R_max
     )
+
+  getDim: () ->
+    r = @getRadius()
     [ 4 * r, 2 * r ]
   
-  draw: ( center ) ->
+  draw: ( paper, center ) ->
     # draw it
+    r = @getRadius() * opts.graphics.net_step
+    @element = paper.circle( center.x, center.y, r ).attr( { fill: "blue", stroke: "none" } )
+    _log( @host_log.host )
+    paper.print( center.x - 2 * r, center.y + r, @host_log.host, paper.getFont( "Times" ) )
+    true
 
 
 class Mapper
@@ -306,7 +314,7 @@ class Mapper
       # with axis dims geven
       center = @getCenterForSizeWithLock( marker.getDim() )
       return if center is null # no space left
-      marker.draw( center )
+      marker.draw( @paper, center )
 
 
 class HostLog

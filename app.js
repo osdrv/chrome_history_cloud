@@ -133,12 +133,25 @@
     function VisitMarker(host_log) {
       this.host_log = host_log;
     }
+    VisitMarker.prototype.getRadius = function() {
+      return opts.graphics.approximate(this.host_log.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
+    };
     VisitMarker.prototype.getDim = function() {
       var r;
-      r = opts.graphics.approximate(this.host_log.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
+      r = this.getRadius();
       return [4 * r, 2 * r];
     };
-    VisitMarker.prototype.draw = function(center) {};
+    VisitMarker.prototype.draw = function(paper, center) {
+      var r;
+      r = this.getRadius() * opts.graphics.net_step;
+      this.element = paper.circle(center.x, center.y, r).attr({
+        fill: "blue",
+        stroke: "none"
+      });
+      _log(this.host_log.host);
+      paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"));
+      return true;
+    };
     return VisitMarker;
   })();
   Mapper = (function() {
@@ -388,7 +401,7 @@
         if (center === null) {
           return;
         }
-        _results.push(marker.draw(center));
+        _results.push(marker.draw(this.paper, center));
       }
       return _results;
     };
@@ -631,12 +644,25 @@
     function VisitMarker(host_log) {
       this.host_log = host_log;
     }
+    VisitMarker.prototype.getRadius = function() {
+      return opts.graphics.approximate(this.host_log.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
+    };
     VisitMarker.prototype.getDim = function() {
       var r;
-      r = opts.graphics.approximate(this.host_log.normalized_val, 0, 1, opts.graphics.R_min, opts.graphics.R_max);
+      r = this.getRadius();
       return [4 * r, 2 * r];
     };
-    VisitMarker.prototype.draw = function(center) {};
+    VisitMarker.prototype.draw = function(paper, center) {
+      var r;
+      r = this.getRadius() * opts.graphics.net_step;
+      this.element = paper.circle(center.x, center.y, r).attr({
+        fill: "blue",
+        stroke: "none"
+      });
+      _log(this.host_log.host);
+      paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"));
+      return true;
+    };
     return VisitMarker;
   })();
   Mapper = (function() {
@@ -886,7 +912,7 @@
         if (center === null) {
           return;
         }
-        _results.push(marker.draw(center));
+        _results.push(marker.draw(this.paper, center));
       }
       return _results;
     };
