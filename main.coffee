@@ -23,7 +23,7 @@ opts =
     getMarkerColDim: ( r ) ->
       8 * r + 8
     getMarkerRowDim: ( r ) ->
-      4 * r + 4
+      4 * r + 2
 
 _log = ( d ) ->
   console.log( d )
@@ -126,7 +126,8 @@ class VisitMarker
   draw: ( paper, center ) ->
     r = @getRadius() * opts.graphics.net_step
     @element = paper.set()
-    @element.push( paper.text( center.x, center.y + 1.6 * r, @host_log.host ).attr( { font: "14px Fontin-Sans, Arial", fill: "#000" } ) )
+    text_label = paper.text( center.x, center.y + 1.6 * r, @host_log.host ).attr( { font: "14px Fontin-Sans, Arial", fill: "#000" } )
+    @element.push( text_label )
     log_pool = @host_log.log_pool
     return if log_pool.length is 0
     angle = 0
@@ -148,17 +149,19 @@ class VisitMarker
         window.location.href = url
       )
       sector.hover( () ->
-        g = this.glow()
+        g = this.glow().toBack()
         g.attr( "stroke-opacity": 0 )
         g.animate( { "stroke-opacity": 1 }, 300 )
-        this._glow = g
+        this.data( "glow", g )
+        text_label.toFront()
       , () ->
-        g = this._glow
+        g = this.data( "glow" )
         if g?
           g.animate( { "stroke-opacity": 0 }, 300, () ->
             g.remove()
           )
-        this._glow = null
+        this.data( "glow", null )
+        text_label.toBack()
       )
       @element.push(
         sector
@@ -233,7 +236,8 @@ class Mapper
 
   getCenterTriangle: () ->
     y_index = Math.round( @triangles.length / 2 ) - 1
-    x_index = Math.round( @triangles[ y_index ].length / 2 ) - 1 + 40
+    x_index = Math.round( @triangles[ y_index ].length / 2 ) - 1
+    x_index += Math.round( 0.5 * x_index )
     triangle = this.triangles[ y_index ][ x_index ]
     triangle
   

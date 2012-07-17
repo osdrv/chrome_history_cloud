@@ -30,7 +30,7 @@
         return 8 * r + 8;
       },
       getMarkerRowDim: function(r) {
-        return 4 * r + 4;
+        return 4 * r + 2;
       }
     }
   };
@@ -153,13 +153,14 @@
       return [opts.graphics.getMarkerColDim(r), opts.graphics.getMarkerRowDim(r)];
     };
     VisitMarker.prototype.draw = function(paper, center) {
-      var angle, angle_step, channels, i, log_pool, r, sector, stroke, stroke_attr, visit_log, _i, _len, _results;
+      var angle, angle_step, channels, i, log_pool, r, sector, stroke, stroke_attr, text_label, visit_log, _i, _len, _results;
       r = this.getRadius() * opts.graphics.net_step;
       this.element = paper.set();
-      this.element.push(paper.text(center.x, center.y + 1.6 * r, this.host_log.host).attr({
+      text_label = paper.text(center.x, center.y + 1.6 * r, this.host_log.host).attr({
         font: "14px Fontin-Sans, Arial",
         fill: "#000"
-      }));
+      });
+      this.element.push(text_label);
       log_pool = this.host_log.log_pool;
       if (log_pool.length === 0) {
         return;
@@ -195,17 +196,18 @@
         });
         sector.hover(function() {
           var g;
-          g = this.glow();
+          g = this.glow().toBack();
           g.attr({
             "stroke-opacity": 0
           });
           g.animate({
             "stroke-opacity": 1
           }, 300);
-          return this._glow = g;
+          this.data("glow", g);
+          return text_label.toFront();
         }, function() {
           var g;
-          g = this._glow;
+          g = this.data("glow");
           if (g != null) {
             g.animate({
               "stroke-opacity": 0
@@ -213,7 +215,8 @@
               return g.remove();
             });
           }
-          return this._glow = null;
+          this.data("glow", null);
+          return text_label.toBack();
         });
         this.element.push(sector);
         _results.push(angle += angle_step);
@@ -307,7 +310,8 @@
     Mapper.prototype.getCenterTriangle = function() {
       var triangle, x_index, y_index;
       y_index = Math.round(this.triangles.length / 2) - 1;
-      x_index = Math.round(this.triangles[y_index].length / 2) - 1 + 40;
+      x_index = Math.round(this.triangles[y_index].length / 2) - 1;
+      x_index += Math.round(0.5 * x_index);
       triangle = this.triangles[y_index][x_index];
       return triangle;
     };
@@ -687,7 +691,7 @@
         return 8 * r + 8;
       },
       getMarkerRowDim: function(r) {
-        return 4 * r + 4;
+        return 4 * r + 2;
       }
     }
   };
@@ -810,13 +814,14 @@
       return [opts.graphics.getMarkerColDim(r), opts.graphics.getMarkerRowDim(r)];
     };
     VisitMarker.prototype.draw = function(paper, center) {
-      var angle, angle_step, channels, i, log_pool, r, sector, stroke, stroke_attr, visit_log, _i, _len, _results;
+      var angle, angle_step, channels, i, log_pool, r, sector, stroke, stroke_attr, text_label, visit_log, _i, _len, _results;
       r = this.getRadius() * opts.graphics.net_step;
       this.element = paper.set();
-      this.element.push(paper.text(center.x, center.y + 1.6 * r, this.host_log.host).attr({
+      text_label = paper.text(center.x, center.y + 1.6 * r, this.host_log.host).attr({
         font: "14px Fontin-Sans, Arial",
         fill: "#000"
-      }));
+      });
+      this.element.push(text_label);
       log_pool = this.host_log.log_pool;
       if (log_pool.length === 0) {
         return;
@@ -852,17 +857,18 @@
         });
         sector.hover(function() {
           var g;
-          g = this.glow();
+          g = this.glow().toBack();
           g.attr({
             "stroke-opacity": 0
           });
           g.animate({
             "stroke-opacity": 1
           }, 300);
-          return this._glow = g;
+          this.data("glow", g);
+          return text_label.toFront();
         }, function() {
           var g;
-          g = this._glow;
+          g = this.data("glow");
           if (g != null) {
             g.animate({
               "stroke-opacity": 0
@@ -870,7 +876,8 @@
               return g.remove();
             });
           }
-          return this._glow = null;
+          this.data("glow", null);
+          return text_label.toBack();
         });
         this.element.push(sector);
         _results.push(angle += angle_step);
@@ -964,7 +971,8 @@
     Mapper.prototype.getCenterTriangle = function() {
       var triangle, x_index, y_index;
       y_index = Math.round(this.triangles.length / 2) - 1;
-      x_index = Math.round(this.triangles[y_index].length / 2) - 1 + 40;
+      x_index = Math.round(this.triangles[y_index].length / 2) - 1;
+      x_index += Math.round(0.5 * x_index);
       triangle = this.triangles[y_index][x_index];
       return triangle;
     };
