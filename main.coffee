@@ -1,12 +1,13 @@
 _inited = false
 IS_DEV = true
+DRAW_NET = false
 
 opts =
   raphael:
     width: 1000
     height: 600
-    left: 10
-    top: 10
+    left: 0
+    top: 0
   history:
     limit: 1000
   graphics:
@@ -14,10 +15,15 @@ opts =
     delta: 0.25
     R_max: 3
     R_min: 1
+    ring_width: 0.5
     approximate: ( v, v_min, v_max, r_min, r_max ) ->
       if v_min == v_max
         return r_max
       r_min + v * ( r_max - r_min ) / ( v_max - v_min )
+    getMarkerColDim: ( r ) ->
+      8 * r + 8
+    getMarkerRowDim: ( r ) ->
+      4 * r + 4
 
 _log = ( d ) ->
   console.log( d )
@@ -40,6 +46,7 @@ class HistoryLog
   parseURL: () ->
     parsed_url = new URI( @url )
     parsed_host = parsed_url.parsed.host
+    return if parsed_host is undefined
     parsed_host = parsed_host?.replace( /^www\./, "" )
     host_parts = parsed_host.split( /\./ )
     if host_parts.length > 2
@@ -114,14 +121,50 @@ class VisitMarker
 
   getDim: () ->
     r = @getRadius()
-    [ 4 * r, 2 * r ]
+    [ opts.graphics.getMarkerColDim( r ), opts.graphics.getMarkerRowDim( r ) ]
   
   draw: ( paper, center ) ->
-    # draw it
     r = @getRadius() * opts.graphics.net_step
     @element = paper.set()
-    @element.push( paper.circle( center.x, center.y, r ).attr( { fill: "blue", stroke: "none" } ) )
-    @element.push( paper.print( center.x - 2 * r, center.y + r, @host_log.host, paper.getFont( "Times" ), 30 ) )
+    @element.push( paper.text( center.x, center.y + 1.6 * r, @host_log.host ).attr( { font: "14px Fontin-Sans, Arial", fill: "#000" } ) )
+    log_pool = @host_log.log_pool
+    return if log_pool.length is 0
+    angle = 0
+    angle_step = 360 / log_pool.length
+    stroke_attr = { "stroke-width": Math.round( r * opts.graphics.ring_width ) }
+    for visit_log in log_pool
+      #while angle < 360
+      channels = []
+      for i in [ 1..3 ]
+        channels.push( Math.round( Math.random() * 255 ) )
+      stroke = Raphael.rgb.apply( window, channels )
+      if angle_step is 360
+        sector = paper.circle( center.x, center.y, r ).attr( stroke: stroke ).attr( stroke_attr )
+      else
+        sector = paper.path().attr( stroke_attr ).attr( stroke: stroke, arc: [ center.x, center.y, angle, angle + angle_step, r ] )
+      sector.visit_log = visit_log
+      sector.click( ( e ) ->
+        url = this.visit_log.url
+        window.location.href = url
+      )
+      sector.hover( () ->
+        g = this.glow()
+        g.attr( "stroke-opacity": 0 )
+        g.animate( { "stroke-opacity": 1 }, 300 )
+        this._glow = g
+      , () ->
+        g = this._glow
+        if g?
+          g.animate( { "stroke-opacity": 0 }, 300, () ->
+            g.remove()
+          )
+        this._glow = null
+      )
+      @element.push(
+        sector
+      )
+      angle += angle_step
+
 
 
 class Mapper
@@ -130,8 +173,8 @@ class Mapper
     @net = {}
     @triangles = []
     @buildNet()
-    @drawNet() if IS_DEV
-    @direction = [ [ 0, 1 ] ]
+    @drawNet() if DRAW_NET
+    @direction = [ [ 1, 0 ] ]
     @transform_matrix = [ [ 0, 1 ], [ -1, 0 ] ]
 
   drawNet: () ->
@@ -190,7 +233,7 @@ class Mapper
 
   getCenterTriangle: () ->
     y_index = Math.round( @triangles.length / 2 ) - 1
-    x_index = Math.round( @triangles[ y_index ].length / 2 ) - 1
+    x_index = Math.round( @triangles[ y_index ].length / 2 ) - 1 + 40
     triangle = this.triangles[ y_index ][ x_index ]
     triangle
   
@@ -211,15 +254,26 @@ class Mapper
     res
 
   highlightCenterTriangle: () ->
-    center = @getCenterTriangle().getCenter()
-    circle = @paper.circle( center.x, center.y, 5 )
-    circle.attr( { fill: "red" } )
+    @highlightTriangle( @getCenterTriangle() )
+
+  highlightTriangle: ( triangle ) ->
+    center = triangle.getCenter()
+    circle = @paper.circle( center.x, center.y, 3 )
+    color = "white"
+    if triangle.isRed()
+      color = "red"
+    else if triangle.isBlue()
+      color = "blue"
+    circle.attr( { fill: color } )
+    for vertex in triangle.vertexes
+      circle = @paper.circle( vertex.x, vertex.y, 1 )
 
   getCenterForSizeWithLock: ( size ) ->
     cols = 1 + Math.floor( size[ 0 ] )
     rows = 1 + Math.floor( size[ 1 ] )
     @center_triangle ||= @getCenterTriangle()
     directions_changed = 0
+
     while directions_changed < 4
       current_index = @center_triangle.index
       res = @_tryLockSectorAround( current_index, { rows: rows, cols: cols } )
@@ -228,11 +282,13 @@ class Mapper
       if res isnt null and res.index isnt null and res.triangles.length > 0
         @center_triangle = @getTriangleWithIndex( res.index )
         @_lockTriangles( res.triangles )
+        #for triangle in res.triangles
+        #  @highlightTriangle( triangle )
         return @_getMassCenter( res.triangles )
     null
  
   getTriangleWithIndex: ( index ) ->
-    @triangles[ index.row ][ index.col ]
+    @triangles[ index.row ]?[ index.col ]
 
   _tryLockSectorAround: ( index, size ) ->
     current_row = index.row
@@ -250,46 +306,72 @@ class Mapper
       right: size.cols - 1 - trunc_col
     }
 
-    while !triangle.isWhite() and
-      current_row >= paddings.left and
-        current_col >= paddings.top and
-          current_row <= ( max_row - paddings.bottom ) and
-            current_col <= ( max_col - paddings.right )
-      current_row += @direction[ 0 ][ 0 ]
-      current_col += @direction[ 0 ][ 1 ]
-      triangle = @getTriangleWithIndex( { row: current_row, col: current_col } )
-    
-    if !triangle.isWhite()
-      _log( triangle )
-      return null
-    
     res = {
       triangles: []
       index: null
     }
-
-    for i in [ ( current_row - paddings.top )..( current_row + paddings.bottom ) ]
-      for j in [ ( current_col - paddings.left )..( current_col + paddings.right ) ]
-        tmp_triangle = @getTriangleWithIndex( { row: current_row, col: current_col } )
-        if tmp_triangle.isRed() or tmp_triangle.isBlue()
-          return null
-        else
-          res.triangles.push( tmp_triangle )
-    res.index = { row: current_row, col: current_col }
-    res
     
+    size_fits = false
+     
+    while current_row >= paddings.left and
+      current_col >= paddings.top and
+        current_row <= ( max_row - paddings.bottom ) and
+          current_col <= ( max_col - paddings.right ) and
+            !size_fits
+      size_fits = false
+      if !triangle.isWhite()
+        current_row += @direction[ 0 ][ 0 ]
+        current_col += @direction[ 0 ][ 1 ]
+        triangle = @getTriangleWithIndex( { row: current_row, col: current_col } )
+        continue
+      else
+        res.triangles = []
+        res.index = { row: current_row, col: current_col }
+        bound_rows = [ current_row - paddings.top, current_row + paddings.bottom ]
+        bound_cols = [ current_col - paddings.left, current_col + paddings.right ]
+        for i in [ bound_rows[ 0 ]..bound_rows[ 1 ] ]
+          for j in [ bound_cols[ 0 ]..bound_cols[ 1 ] ]
+            tmp_triangle = @getTriangleWithIndex( { row: i, col: j } )
+            continue if bound_rows.indexOf( i ) isnt -1 and bound_cols.indexOf( j ) isnt -1
+            if tmp_triangle? and
+              !tmp_triangle.isRed() and
+                !tmp_triangle.isBlue()
+              res.triangles.push( tmp_triangle )
+            else
+              size_fits = false
+              break
+              break
+              continue
+        size_fits = true
+    if !size_fits
+      return null
+    res
+
 
   _lockTriangles: ( triangles ) ->
-    _log( triangles )
-    bound_values = []
-    if triangles.length > 2
-      half = Math.floor( triangles.length / 2 )
-      bound_values = [ 0, triangles.length - 1, half, half + 1 ]
-    
+    [ min_row, max_row, min_col, max_col ] = [ null, null, null, null ]
+    for triangle in triangles
+      ix = triangle.index
+      if ix.col > max_col or max_col is null
+        max_col = ix.col
+      else if ix.col < min_col or min_col is null
+        min_col = ix.col
+      if ix.row > max_row or max_row is null
+        max_row = ix.row
+      else if ix.row < min_row or min_row is null
+        min_row = ix.row
+    bound_cols = [ min_col, max_col ]
+    bound_rows = [ min_row, max_row ]
+
+    for triangle in [ triangles[ 0 ], triangles[ triangles.length - 1 ] ]
+      bound_rows.push triangle.index.row
+      bound_cols.push triangle.index.col
     i = 0
     for triangle in triangles
       index = triangle.index
-      if bound_values.indexOf( i ) isnt -1
+      if ( bound_rows.indexOf( triangle.index.row ) isnt -1 ) or
+        ( bound_cols.indexOf( triangle.index.col ) isnt -1 ) and
+          !triangle.isBlue()
         @triangles[ index.row ][ index.col ].blue()
       else
         @triangles[ index.row ][ index.col ].red()
@@ -312,12 +394,19 @@ class Mapper
 
   draw: ( data ) ->
     center = @getCenterTriangle()
-    this.highlightCenterTriangle()
+    #this.highlightCenterTriangle()
+    i = 0 # @REMOVE_ME
+    _log( data )
     for host_name, host_log of data
+      #return if ++i > 1 # @REMOVE_ME
       marker = new VisitMarker( host_log )
       # every marker is considered as ellipse
       # with axis dims geven
       center = @getCenterForSizeWithLock( marker.getDim() )
+      if center is null
+        # one more time from center
+        @center_triangle = @getCenterTriangle()
+        center = @getCenterForSizeWithLock( marker.getDim() )
       return if center is null # no space left
       marker.draw( @paper, center )
 
@@ -385,12 +474,24 @@ updHostLogVal = ( host_log_pool ) ->
   host_log_pool
 
 initRaphael = () ->
-  Raphael(
-    opts.raphael.left,
-    opts.raphael.top,
-    opts.raphael.width,
+  r = Raphael(
+    0,
+    0,
+    document.body.clientWidth,
     opts.raphael.height
   )
+  r.customAttributes.arc = ( x0, y0, angle_from, angle_to, R ) ->
+    a_from = ( 90 - angle_from ) * Math.PI / 180
+    a_to = ( 90 - angle_to ) * Math.PI / 180
+    x1 = x0 + R * Math.cos( a_from )
+    x2 = x0 + R * Math.cos( a_to )
+    y1 = y0 - R * Math.sin( a_from )
+    y2 = y0 - R * Math.sin( a_to )
+    long_flag = +(( angle_from == angle_to ) ? true : ( angle_to - angle_from ) > 180 )
+    path = [ [ "M", x1, y1 ], [ "A", R, R, 0, long_flag, 1, x2, y2 ] ]
+    { path: path }
+  r
+  
 
 loadHistory = ( cb ) ->
   chrome.history.search( { text: "", maxResults: opts.history.limit }, ( data ) =>

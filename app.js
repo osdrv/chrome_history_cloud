@@ -1,14 +1,15 @@
 (function() {
-  var HistoryLog, HostLog, IS_DEV, Mapper, Triangle, Vertex, VisitMarker, drawHistory, history, host_log_pool, initRaphael, loadHistory, main, opts, updHostLogVal, _inited, _log;
+  var DRAW_NET, HistoryLog, HostLog, IS_DEV, Mapper, Triangle, Vertex, VisitMarker, drawHistory, history, host_log_pool, initRaphael, loadHistory, main, opts, updHostLogVal, _inited, _log;
   var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
   _inited = false;
   IS_DEV = true;
+  DRAW_NET = false;
   opts = {
     raphael: {
       width: 1000,
       height: 600,
-      left: 10,
-      top: 10
+      left: 0,
+      top: 0
     },
     history: {
       limit: 1000
@@ -18,11 +19,18 @@
       delta: 0.25,
       R_max: 3,
       R_min: 1,
+      ring_width: 0.5,
       approximate: function(v, v_min, v_max, r_min, r_max) {
         if (v_min === v_max) {
           return r_max;
         }
         return r_min + v * (r_max - r_min) / (v_max - v_min);
+      },
+      getMarkerColDim: function(r) {
+        return 8 * r + 8;
+      },
+      getMarkerRowDim: function(r) {
+        return 4 * r + 4;
       }
     }
   };
@@ -46,6 +54,9 @@
       var host_parts, parsed_host, parsed_url, sub_host_parts;
       parsed_url = new URI(this.url);
       parsed_host = parsed_url.parsed.host;
+      if (parsed_host === void 0) {
+        return;
+      }
       parsed_host = parsed_host != null ? parsed_host.replace(/^www\./, "") : void 0;
       host_parts = parsed_host.split(/\./);
       if (host_parts.length > 2) {
@@ -139,17 +150,75 @@
     VisitMarker.prototype.getDim = function() {
       var r;
       r = this.getRadius();
-      return [4 * r, 2 * r];
+      return [opts.graphics.getMarkerColDim(r), opts.graphics.getMarkerRowDim(r)];
     };
     VisitMarker.prototype.draw = function(paper, center) {
-      var r;
+      var angle, angle_step, channels, i, log_pool, r, sector, stroke, stroke_attr, visit_log, _i, _len, _results;
       r = this.getRadius() * opts.graphics.net_step;
       this.element = paper.set();
-      this.element.push(paper.circle(center.x, center.y, r).attr({
-        fill: "blue",
-        stroke: "none"
+      this.element.push(paper.text(center.x, center.y + 1.6 * r, this.host_log.host).attr({
+        font: "14px Fontin-Sans, Arial",
+        fill: "#000"
       }));
-      return this.element.push(paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"), 30));
+      log_pool = this.host_log.log_pool;
+      if (log_pool.length === 0) {
+        return;
+      }
+      angle = 0;
+      angle_step = 360 / log_pool.length;
+      stroke_attr = {
+        "stroke-width": Math.round(r * opts.graphics.ring_width)
+      };
+      _results = [];
+      for (_i = 0, _len = log_pool.length; _i < _len; _i++) {
+        visit_log = log_pool[_i];
+        channels = [];
+        for (i = 1; i <= 3; i++) {
+          channels.push(Math.round(Math.random() * 255));
+        }
+        stroke = Raphael.rgb.apply(window, channels);
+        if (angle_step === 360) {
+          sector = paper.circle(center.x, center.y, r).attr({
+            stroke: stroke
+          }).attr(stroke_attr);
+        } else {
+          sector = paper.path().attr(stroke_attr).attr({
+            stroke: stroke,
+            arc: [center.x, center.y, angle, angle + angle_step, r]
+          });
+        }
+        sector.visit_log = visit_log;
+        sector.click(function(e) {
+          var url;
+          url = this.visit_log.url;
+          return window.location.href = url;
+        });
+        sector.hover(function() {
+          var g;
+          g = this.glow();
+          g.attr({
+            "stroke-opacity": 0
+          });
+          g.animate({
+            "stroke-opacity": 1
+          }, 300);
+          return this._glow = g;
+        }, function() {
+          var g;
+          g = this._glow;
+          if (g != null) {
+            g.animate({
+              "stroke-opacity": 0
+            }, 300, function() {
+              return g.remove();
+            });
+          }
+          return this._glow = null;
+        });
+        this.element.push(sector);
+        _results.push(angle += angle_step);
+      }
+      return _results;
     };
     return VisitMarker;
   })();
@@ -159,10 +228,10 @@
       this.net = {};
       this.triangles = [];
       this.buildNet();
-      if (IS_DEV) {
+      if (DRAW_NET) {
         this.drawNet();
       }
-      this.direction = [[0, 1]];
+      this.direction = [[1, 0]];
       this.transform_matrix = [[0, 1], [-1, 0]];
     }
     Mapper.prototype.drawNet = function() {
@@ -238,7 +307,7 @@
     Mapper.prototype.getCenterTriangle = function() {
       var triangle, x_index, y_index;
       y_index = Math.round(this.triangles.length / 2) - 1;
-      x_index = Math.round(this.triangles[y_index].length / 2) - 1;
+      x_index = Math.round(this.triangles[y_index].length / 2) - 1 + 40;
       triangle = this.triangles[y_index][x_index];
       return triangle;
     };
@@ -264,12 +333,28 @@
       return res;
     };
     Mapper.prototype.highlightCenterTriangle = function() {
-      var center, circle;
-      center = this.getCenterTriangle().getCenter();
-      circle = this.paper.circle(center.x, center.y, 5);
-      return circle.attr({
-        fill: "red"
+      return this.highlightTriangle(this.getCenterTriangle());
+    };
+    Mapper.prototype.highlightTriangle = function(triangle) {
+      var center, circle, color, vertex, _i, _len, _ref, _results;
+      center = triangle.getCenter();
+      circle = this.paper.circle(center.x, center.y, 3);
+      color = "white";
+      if (triangle.isRed()) {
+        color = "red";
+      } else if (triangle.isBlue()) {
+        color = "blue";
+      }
+      circle.attr({
+        fill: color
       });
+      _ref = triangle.vertexes;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        vertex = _ref[_i];
+        _results.push(circle = this.paper.circle(vertex.x, vertex.y, 1));
+      }
+      return _results;
     };
     Mapper.prototype.getCenterForSizeWithLock = function(size) {
       var cols, current_index, directions_changed, res, rows;
@@ -294,10 +379,11 @@
       return null;
     };
     Mapper.prototype.getTriangleWithIndex = function(index) {
-      return this.triangles[index.row][index.col];
+      var _ref;
+      return (_ref = this.triangles[index.row]) != null ? _ref[index.col] : void 0;
     };
     Mapper.prototype._tryLockSectorAround = function(index, size) {
-      var bounds, current_col, current_row, i, j, max_col, max_row, paddings, res, tmp_triangle, triangle, trunc_col, trunc_row, _ref, _ref2, _ref3, _ref4;
+      var bound_cols, bound_rows, bounds, current_col, current_row, i, j, max_col, max_row, paddings, res, size_fits, tmp_triangle, triangle, trunc_col, trunc_row, _ref, _ref2, _ref3, _ref4;
       current_row = index.row;
       current_col = index.col;
       bounds = this.getBoundSize();
@@ -312,55 +398,87 @@
         bottom: size.rows - 1 - trunc_row,
         right: size.cols - 1 - trunc_col
       };
-      while (!triangle.isWhite() && current_row >= paddings.left && current_col >= paddings.top && current_row <= (max_row - paddings.bottom) && current_col <= (max_col - paddings.right)) {
-        current_row += this.direction[0][0];
-        current_col += this.direction[0][1];
-        triangle = this.getTriangleWithIndex({
-          row: current_row,
-          col: current_col
-        });
-      }
-      if (!triangle.isWhite()) {
-        _log(triangle);
-        return null;
-      }
       res = {
         triangles: [],
         index: null
       };
-      for (i = _ref = current_row - paddings.top, _ref2 = current_row + paddings.bottom; _ref <= _ref2 ? i <= _ref2 : i >= _ref2; _ref <= _ref2 ? i++ : i--) {
-        for (j = _ref3 = current_col - paddings.left, _ref4 = current_col + paddings.right; _ref3 <= _ref4 ? j <= _ref4 : j >= _ref4; _ref3 <= _ref4 ? j++ : j--) {
-          tmp_triangle = this.getTriangleWithIndex({
+      size_fits = false;
+      while (current_row >= paddings.left && current_col >= paddings.top && current_row <= (max_row - paddings.bottom) && current_col <= (max_col - paddings.right) && !size_fits) {
+        size_fits = false;
+        if (!triangle.isWhite()) {
+          current_row += this.direction[0][0];
+          current_col += this.direction[0][1];
+          triangle = this.getTriangleWithIndex({
             row: current_row,
             col: current_col
           });
-          if (tmp_triangle.isRed() || tmp_triangle.isBlue()) {
-            return null;
-          } else {
-            res.triangles.push(tmp_triangle);
+          continue;
+        } else {
+          res.triangles = [];
+          res.index = {
+            row: current_row,
+            col: current_col
+          };
+          bound_rows = [current_row - paddings.top, current_row + paddings.bottom];
+          bound_cols = [current_col - paddings.left, current_col + paddings.right];
+          for (i = _ref = bound_rows[0], _ref2 = bound_rows[1]; _ref <= _ref2 ? i <= _ref2 : i >= _ref2; _ref <= _ref2 ? i++ : i--) {
+            for (j = _ref3 = bound_cols[0], _ref4 = bound_cols[1]; _ref3 <= _ref4 ? j <= _ref4 : j >= _ref4; _ref3 <= _ref4 ? j++ : j--) {
+              tmp_triangle = this.getTriangleWithIndex({
+                row: i,
+                col: j
+              });
+              if (bound_rows.indexOf(i) !== -1 && bound_cols.indexOf(j) !== -1) {
+                continue;
+              }
+              if ((tmp_triangle != null) && !tmp_triangle.isRed() && !tmp_triangle.isBlue()) {
+                res.triangles.push(tmp_triangle);
+              } else {
+                size_fits = false;
+                break;
+                break;
+                continue;
+              }
+            }
           }
+          size_fits = true;
         }
       }
-      res.index = {
-        row: current_row,
-        col: current_col
-      };
+      if (!size_fits) {
+        return null;
+      }
       return res;
     };
     Mapper.prototype._lockTriangles = function(triangles) {
-      var bound_values, half, i, index, triangle, _i, _len, _results;
-      _log(triangles);
-      bound_values = [];
-      if (triangles.length > 2) {
-        half = Math.floor(triangles.length / 2);
-        bound_values = [0, triangles.length - 1, half, half + 1];
+      var bound_cols, bound_rows, i, index, ix, max_col, max_row, min_col, min_row, triangle, _i, _j, _k, _len, _len2, _len3, _ref, _ref2, _results;
+      _ref = [null, null, null, null], min_row = _ref[0], max_row = _ref[1], min_col = _ref[2], max_col = _ref[3];
+      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
+        triangle = triangles[_i];
+        ix = triangle.index;
+        if (ix.col > max_col || max_col === null) {
+          max_col = ix.col;
+        } else if (ix.col < min_col || min_col === null) {
+          min_col = ix.col;
+        }
+        if (ix.row > max_row || max_row === null) {
+          max_row = ix.row;
+        } else if (ix.row < min_row || min_row === null) {
+          min_row = ix.row;
+        }
+      }
+      bound_cols = [min_col, max_col];
+      bound_rows = [min_row, max_row];
+      _ref2 = [triangles[0], triangles[triangles.length - 1]];
+      for (_j = 0, _len2 = _ref2.length; _j < _len2; _j++) {
+        triangle = _ref2[_j];
+        bound_rows.push(triangle.index.row);
+        bound_cols.push(triangle.index.col);
       }
       i = 0;
       _results = [];
-      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
-        triangle = triangles[_i];
+      for (_k = 0, _len3 = triangles.length; _k < _len3; _k++) {
+        triangle = triangles[_k];
         index = triangle.index;
-        if (bound_values.indexOf(i) !== -1) {
+        if ((bound_rows.indexOf(triangle.index.row) !== -1) || (bound_cols.indexOf(triangle.index.col) !== -1) && !triangle.isBlue()) {
           this.triangles[index.row][index.col].blue();
         } else {
           this.triangles[index.row][index.col].red();
@@ -395,14 +513,19 @@
       };
     };
     Mapper.prototype.draw = function(data) {
-      var center, host_log, host_name, marker, _results;
+      var center, host_log, host_name, i, marker, _results;
       center = this.getCenterTriangle();
-      this.highlightCenterTriangle();
+      i = 0;
+      _log(data);
       _results = [];
       for (host_name in data) {
         host_log = data[host_name];
         marker = new VisitMarker(host_log);
         center = this.getCenterForSizeWithLock(marker.getDim());
+        if (center === null) {
+          this.center_triangle = this.getCenterTriangle();
+          center = this.getCenterForSizeWithLock(marker.getDim());
+        }
         if (center === null) {
           return;
         }
@@ -492,7 +615,25 @@
     return host_log_pool;
   };
   initRaphael = function() {
-    return Raphael(opts.raphael.left, opts.raphael.top, opts.raphael.width, opts.raphael.height);
+    var r;
+    r = Raphael(0, 0, document.body.clientWidth, opts.raphael.height);
+    r.customAttributes.arc = function(x0, y0, angle_from, angle_to, R) {
+      var a_from, a_to, long_flag, path, x1, x2, y1, y2, _ref;
+      a_from = (90 - angle_from) * Math.PI / 180;
+      a_to = (90 - angle_to) * Math.PI / 180;
+      x1 = x0 + R * Math.cos(a_from);
+      x2 = x0 + R * Math.cos(a_to);
+      y1 = y0 - R * Math.sin(a_from);
+      y2 = y0 - R * Math.sin(a_to);
+      long_flag = +((_ref = angle_from === angle_to) != null ? _ref : {
+        "true": (angle_to - angle_from) > 180
+      });
+      path = [["M", x1, y1], ["A", R, R, 0, long_flag, 1, x2, y2]];
+      return {
+        path: path
+      };
+    };
+    return r;
   };
   loadHistory = function(cb) {
     return chrome.history.search({
@@ -519,12 +660,13 @@
   document.addEventListener('DOMContentLoaded', main, false);
   _inited = false;
   IS_DEV = true;
+  DRAW_NET = false;
   opts = {
     raphael: {
       width: 1000,
       height: 600,
-      left: 10,
-      top: 10
+      left: 0,
+      top: 0
     },
     history: {
       limit: 1000
@@ -534,11 +676,18 @@
       delta: 0.25,
       R_max: 3,
       R_min: 1,
+      ring_width: 0.5,
       approximate: function(v, v_min, v_max, r_min, r_max) {
         if (v_min === v_max) {
           return r_max;
         }
         return r_min + v * (r_max - r_min) / (v_max - v_min);
+      },
+      getMarkerColDim: function(r) {
+        return 8 * r + 8;
+      },
+      getMarkerRowDim: function(r) {
+        return 4 * r + 4;
       }
     }
   };
@@ -562,6 +711,9 @@
       var host_parts, parsed_host, parsed_url, sub_host_parts;
       parsed_url = new URI(this.url);
       parsed_host = parsed_url.parsed.host;
+      if (parsed_host === void 0) {
+        return;
+      }
       parsed_host = parsed_host != null ? parsed_host.replace(/^www\./, "") : void 0;
       host_parts = parsed_host.split(/\./);
       if (host_parts.length > 2) {
@@ -655,17 +807,75 @@
     VisitMarker.prototype.getDim = function() {
       var r;
       r = this.getRadius();
-      return [4 * r, 2 * r];
+      return [opts.graphics.getMarkerColDim(r), opts.graphics.getMarkerRowDim(r)];
     };
     VisitMarker.prototype.draw = function(paper, center) {
-      var r;
+      var angle, angle_step, channels, i, log_pool, r, sector, stroke, stroke_attr, visit_log, _i, _len, _results;
       r = this.getRadius() * opts.graphics.net_step;
       this.element = paper.set();
-      this.element.push(paper.circle(center.x, center.y, r).attr({
-        fill: "blue",
-        stroke: "none"
+      this.element.push(paper.text(center.x, center.y + 1.6 * r, this.host_log.host).attr({
+        font: "14px Fontin-Sans, Arial",
+        fill: "#000"
       }));
-      return this.element.push(paper.print(center.x - 2 * r, center.y + r, this.host_log.host, paper.getFont("Times"), 30));
+      log_pool = this.host_log.log_pool;
+      if (log_pool.length === 0) {
+        return;
+      }
+      angle = 0;
+      angle_step = 360 / log_pool.length;
+      stroke_attr = {
+        "stroke-width": Math.round(r * opts.graphics.ring_width)
+      };
+      _results = [];
+      for (_i = 0, _len = log_pool.length; _i < _len; _i++) {
+        visit_log = log_pool[_i];
+        channels = [];
+        for (i = 1; i <= 3; i++) {
+          channels.push(Math.round(Math.random() * 255));
+        }
+        stroke = Raphael.rgb.apply(window, channels);
+        if (angle_step === 360) {
+          sector = paper.circle(center.x, center.y, r).attr({
+            stroke: stroke
+          }).attr(stroke_attr);
+        } else {
+          sector = paper.path().attr(stroke_attr).attr({
+            stroke: stroke,
+            arc: [center.x, center.y, angle, angle + angle_step, r]
+          });
+        }
+        sector.visit_log = visit_log;
+        sector.click(function(e) {
+          var url;
+          url = this.visit_log.url;
+          return window.location.href = url;
+        });
+        sector.hover(function() {
+          var g;
+          g = this.glow();
+          g.attr({
+            "stroke-opacity": 0
+          });
+          g.animate({
+            "stroke-opacity": 1
+          }, 300);
+          return this._glow = g;
+        }, function() {
+          var g;
+          g = this._glow;
+          if (g != null) {
+            g.animate({
+              "stroke-opacity": 0
+            }, 300, function() {
+              return g.remove();
+            });
+          }
+          return this._glow = null;
+        });
+        this.element.push(sector);
+        _results.push(angle += angle_step);
+      }
+      return _results;
     };
     return VisitMarker;
   })();
@@ -675,10 +885,10 @@
       this.net = {};
       this.triangles = [];
       this.buildNet();
-      if (IS_DEV) {
+      if (DRAW_NET) {
         this.drawNet();
       }
-      this.direction = [[0, 1]];
+      this.direction = [[1, 0]];
       this.transform_matrix = [[0, 1], [-1, 0]];
     }
     Mapper.prototype.drawNet = function() {
@@ -754,7 +964,7 @@
     Mapper.prototype.getCenterTriangle = function() {
       var triangle, x_index, y_index;
       y_index = Math.round(this.triangles.length / 2) - 1;
-      x_index = Math.round(this.triangles[y_index].length / 2) - 1;
+      x_index = Math.round(this.triangles[y_index].length / 2) - 1 + 40;
       triangle = this.triangles[y_index][x_index];
       return triangle;
     };
@@ -780,12 +990,28 @@
       return res;
     };
     Mapper.prototype.highlightCenterTriangle = function() {
-      var center, circle;
-      center = this.getCenterTriangle().getCenter();
-      circle = this.paper.circle(center.x, center.y, 5);
-      return circle.attr({
-        fill: "red"
+      return this.highlightTriangle(this.getCenterTriangle());
+    };
+    Mapper.prototype.highlightTriangle = function(triangle) {
+      var center, circle, color, vertex, _i, _len, _ref, _results;
+      center = triangle.getCenter();
+      circle = this.paper.circle(center.x, center.y, 3);
+      color = "white";
+      if (triangle.isRed()) {
+        color = "red";
+      } else if (triangle.isBlue()) {
+        color = "blue";
+      }
+      circle.attr({
+        fill: color
       });
+      _ref = triangle.vertexes;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        vertex = _ref[_i];
+        _results.push(circle = this.paper.circle(vertex.x, vertex.y, 1));
+      }
+      return _results;
     };
     Mapper.prototype.getCenterForSizeWithLock = function(size) {
       var cols, current_index, directions_changed, res, rows;
@@ -810,10 +1036,11 @@
       return null;
     };
     Mapper.prototype.getTriangleWithIndex = function(index) {
-      return this.triangles[index.row][index.col];
+      var _ref;
+      return (_ref = this.triangles[index.row]) != null ? _ref[index.col] : void 0;
     };
     Mapper.prototype._tryLockSectorAround = function(index, size) {
-      var bounds, current_col, current_row, i, j, max_col, max_row, paddings, res, tmp_triangle, triangle, trunc_col, trunc_row, _ref, _ref2, _ref3, _ref4;
+      var bound_cols, bound_rows, bounds, current_col, current_row, i, j, max_col, max_row, paddings, res, size_fits, tmp_triangle, triangle, trunc_col, trunc_row, _ref, _ref2, _ref3, _ref4;
       current_row = index.row;
       current_col = index.col;
       bounds = this.getBoundSize();
@@ -828,55 +1055,87 @@
         bottom: size.rows - 1 - trunc_row,
         right: size.cols - 1 - trunc_col
       };
-      while (!triangle.isWhite() && current_row >= paddings.left && current_col >= paddings.top && current_row <= (max_row - paddings.bottom) && current_col <= (max_col - paddings.right)) {
-        current_row += this.direction[0][0];
-        current_col += this.direction[0][1];
-        triangle = this.getTriangleWithIndex({
-          row: current_row,
-          col: current_col
-        });
-      }
-      if (!triangle.isWhite()) {
-        _log(triangle);
-        return null;
-      }
       res = {
         triangles: [],
         index: null
       };
-      for (i = _ref = current_row - paddings.top, _ref2 = current_row + paddings.bottom; _ref <= _ref2 ? i <= _ref2 : i >= _ref2; _ref <= _ref2 ? i++ : i--) {
-        for (j = _ref3 = current_col - paddings.left, _ref4 = current_col + paddings.right; _ref3 <= _ref4 ? j <= _ref4 : j >= _ref4; _ref3 <= _ref4 ? j++ : j--) {
-          tmp_triangle = this.getTriangleWithIndex({
+      size_fits = false;
+      while (current_row >= paddings.left && current_col >= paddings.top && current_row <= (max_row - paddings.bottom) && current_col <= (max_col - paddings.right) && !size_fits) {
+        size_fits = false;
+        if (!triangle.isWhite()) {
+          current_row += this.direction[0][0];
+          current_col += this.direction[0][1];
+          triangle = this.getTriangleWithIndex({
             row: current_row,
             col: current_col
           });
-          if (tmp_triangle.isRed() || tmp_triangle.isBlue()) {
-            return null;
-          } else {
-            res.triangles.push(tmp_triangle);
+          continue;
+        } else {
+          res.triangles = [];
+          res.index = {
+            row: current_row,
+            col: current_col
+          };
+          bound_rows = [current_row - paddings.top, current_row + paddings.bottom];
+          bound_cols = [current_col - paddings.left, current_col + paddings.right];
+          for (i = _ref = bound_rows[0], _ref2 = bound_rows[1]; _ref <= _ref2 ? i <= _ref2 : i >= _ref2; _ref <= _ref2 ? i++ : i--) {
+            for (j = _ref3 = bound_cols[0], _ref4 = bound_cols[1]; _ref3 <= _ref4 ? j <= _ref4 : j >= _ref4; _ref3 <= _ref4 ? j++ : j--) {
+              tmp_triangle = this.getTriangleWithIndex({
+                row: i,
+                col: j
+              });
+              if (bound_rows.indexOf(i) !== -1 && bound_cols.indexOf(j) !== -1) {
+                continue;
+              }
+              if ((tmp_triangle != null) && !tmp_triangle.isRed() && !tmp_triangle.isBlue()) {
+                res.triangles.push(tmp_triangle);
+              } else {
+                size_fits = false;
+                break;
+                break;
+                continue;
+              }
+            }
           }
+          size_fits = true;
         }
       }
-      res.index = {
-        row: current_row,
-        col: current_col
-      };
+      if (!size_fits) {
+        return null;
+      }
       return res;
     };
     Mapper.prototype._lockTriangles = function(triangles) {
-      var bound_values, half, i, index, triangle, _i, _len, _results;
-      _log(triangles);
-      bound_values = [];
-      if (triangles.length > 2) {
-        half = Math.floor(triangles.length / 2);
-        bound_values = [0, triangles.length - 1, half, half + 1];
+      var bound_cols, bound_rows, i, index, ix, max_col, max_row, min_col, min_row, triangle, _i, _j, _k, _len, _len2, _len3, _ref, _ref2, _results;
+      _ref = [null, null, null, null], min_row = _ref[0], max_row = _ref[1], min_col = _ref[2], max_col = _ref[3];
+      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
+        triangle = triangles[_i];
+        ix = triangle.index;
+        if (ix.col > max_col || max_col === null) {
+          max_col = ix.col;
+        } else if (ix.col < min_col || min_col === null) {
+          min_col = ix.col;
+        }
+        if (ix.row > max_row || max_row === null) {
+          max_row = ix.row;
+        } else if (ix.row < min_row || min_row === null) {
+          min_row = ix.row;
+        }
+      }
+      bound_cols = [min_col, max_col];
+      bound_rows = [min_row, max_row];
+      _ref2 = [triangles[0], triangles[triangles.length - 1]];
+      for (_j = 0, _len2 = _ref2.length; _j < _len2; _j++) {
+        triangle = _ref2[_j];
+        bound_rows.push(triangle.index.row);
+        bound_cols.push(triangle.index.col);
       }
       i = 0;
       _results = [];
-      for (_i = 0, _len = triangles.length; _i < _len; _i++) {
-        triangle = triangles[_i];
+      for (_k = 0, _len3 = triangles.length; _k < _len3; _k++) {
+        triangle = triangles[_k];
         index = triangle.index;
-        if (bound_values.indexOf(i) !== -1) {
+        if ((bound_rows.indexOf(triangle.index.row) !== -1) || (bound_cols.indexOf(triangle.index.col) !== -1) && !triangle.isBlue()) {
           this.triangles[index.row][index.col].blue();
         } else {
           this.triangles[index.row][index.col].red();
@@ -911,14 +1170,19 @@
       };
     };
     Mapper.prototype.draw = function(data) {
-      var center, host_log, host_name, marker, _results;
+      var center, host_log, host_name, i, marker, _results;
       center = this.getCenterTriangle();
-      this.highlightCenterTriangle();
+      i = 0;
+      _log(data);
       _results = [];
       for (host_name in data) {
         host_log = data[host_name];
         marker = new VisitMarker(host_log);
         center = this.getCenterForSizeWithLock(marker.getDim());
+        if (center === null) {
+          this.center_triangle = this.getCenterTriangle();
+          center = this.getCenterForSizeWithLock(marker.getDim());
+        }
         if (center === null) {
           return;
         }
@@ -1008,7 +1272,25 @@
     return host_log_pool;
   };
   initRaphael = function() {
-    return Raphael(opts.raphael.left, opts.raphael.top, opts.raphael.width, opts.raphael.height);
+    var r;
+    r = Raphael(0, 0, document.body.clientWidth, opts.raphael.height);
+    r.customAttributes.arc = function(x0, y0, angle_from, angle_to, R) {
+      var a_from, a_to, long_flag, path, x1, x2, y1, y2, _ref;
+      a_from = (90 - angle_from) * Math.PI / 180;
+      a_to = (90 - angle_to) * Math.PI / 180;
+      x1 = x0 + R * Math.cos(a_from);
+      x2 = x0 + R * Math.cos(a_to);
+      y1 = y0 - R * Math.sin(a_from);
+      y2 = y0 - R * Math.sin(a_to);
+      long_flag = +((_ref = angle_from === angle_to) != null ? _ref : {
+        "true": (angle_to - angle_from) > 180
+      });
+      path = [["M", x1, y1], ["A", R, R, 0, long_flag, 1, x2, y2]];
+      return {
+        path: path
+      };
+    };
+    return r;
   };
   loadHistory = function(cb) {
     return chrome.history.search({
